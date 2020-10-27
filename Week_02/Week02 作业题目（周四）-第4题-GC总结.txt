@@ -1,0 +1,53 @@
+一、SerialGC
+SerialGC是串行化GC，它出现最早，历史最悠久，是一切GC的基石。它在进行GC时会停掉业务线程（STW），影响到用户的正常使用，而且GC线程只有一个。
+SerialGC分为Serial（新生代）+ Serial Old（老年代）
+Serial（新生代）：标记-复制算法，发生区域为DefNew
+Serial Old（老年代）：标记-整理算法，发生区域为Tenured+Metaspace
+优点：它的GC线程只有一个，因此不用进行多线程切换，能更加专注于垃圾收集，在单核场景下效率极高，并且在回收较小内存时，停顿时间非常短。基于这个优点，SerialGC现在仍然是JVM Client模式下默认的垃圾收集器。
+缺点：堆内存较大时，SerialGC回收时间变长；对多核CPU机器来说，SerialGC由于它的单线程GC，不能充分利用机器资源，不推荐使用。
+
+二、ParNew
+ParNew是SerialGC的多线程版本，它只能用于新生代的垃圾收集。在多核CPU环境下，ParNew的垃圾收集效率高于SerialGC。但在单核CPU环境里，ParNew的效率反而会低于SerialGC，因为ParNew存在线程切换的开销。
+ParNew可以和CMS GC配合使用，在指定CMS GC时，默认新生代用的是ParNew。
+优点：GC线程有多个，在多核CPU环境中可以充分利用机器资源。是CMS GC默认的新生代垃圾收集器。
+缺点：在进行GC时仍会停掉全部的业务线程。
+
+三、ParallelGC
+ParallelGC是并行化GC，和ParNew类似，它的GC线程也有多个。和ParNew不同的是，ParallelGC是吞吐量优先的GC，有自适应调节策略。基于这个自适应调节策略，ParallelGC会出现原因为Ergonomics的Full GC。大部分GC的触发时机是内存不够分配，GC原因是Allocation Failure，而ParallelGC可以根据设定的吞吐量参数进行自适应调整，在出现内存分配失败之前就可以自己触发Full GC(Ergonomics)。
+ParallelGC分为Parallel Scavenge（新生代）+ Parallel Old（老年代）
+Parallel Scavenge（新生代）：标记-复制算法，发生区域为PSYoungGen
+Parallel Old（老年代）：标记-整理算法，发生区域为PSYoungGen+ParOldGen+Metaspace
+优点：多线程GC，吞吐量优先，有自适应调节策略。是JDK6、7、8默认的垃圾收集器。
+缺点：在进行GC时仍会停掉全部的业务线程。
+
+四、ConcMarkSweepGC
+CMS GC是一款并发垃圾收集器，它的GC线程可以和业务线程同时进行，最大限度地减少业务线程的停顿时间，因此它是一款低延迟优先的垃圾收集器。相较于SerialGC、ParNew和ParallelGC而言，CMS GC的创新在于它将GC过程划分成了多个小步骤，除了必要的两个步骤外，其他步骤均可以和业务线程同时进行，也因此它的GC过程非常复杂。
+CMS GC只能用于老年代的垃圾收集，默认是标记-整理算法，会造成内存碎片。在若干次GC之后会进行一次碎片整理。
+优点：GC线程和业务线程并发进行，多线程GC，系统停顿时间短，低延迟。
+缺点：对CPU资源敏感、无法处理浮动垃圾、造成空间碎片。
+
+五、G1GC
+G1GC是JDK9及以上版本的默认垃圾收集器，代表着比较先进的垃圾收集理念。它和CMS GC一样，也是一款并发垃圾收集器，因此CMS的优点G1也有。和CMS GC不一样的是，G1采用的算法可以认为是标记-整理算法，因此不会像CMS GC那样产生内存碎片。而且相较于CMS而言，G1还有可预测的停顿时间模型，因此G1更加智能、灵活。
+在G1之前的垃圾收集器的收集范围都是一整个新生代或者老年代，G1不再是这样。G1将整个堆分成了多个大小相等的独立Region，虽然依然有新生代和老年代的概念，但它们不再彼此物理隔离，而各是一部分Region的集合。
+G1之所以有可预测的停顿时间模型，是因为它有计划地避免了在全区范围内进行垃圾收集。G1对每个Region都建立了垃圾跟踪，在每次GC的时候优先处理垃圾价值较大的Region（Garbage-First名称的由来），使得它能在较短时间内获得较高的垃圾收集效率。
+G1GC的使用范围是整个堆，Region之间是标记-复制算法，整体可看作标记-整理算法。
+优点：GC线程和业务线程并发进行，多线程GC，系统停顿时间短，低延迟。有可预测的停顿时间模型。无内存碎片。大内存场景下，G1效率高于CMS。
+缺点：无论是垃圾收集产生的内存占用还是程序执行时的额外负载，G1都高于CMS。在小内存场景下，G1的效率不比CMS高。
+
+六、常见的GC组合策略：
+1.Serial（新生代）+ Serial Old（老年代）
+2.ParNew（新生代）+ Serial Old（老年代）
+3.ParNew（新生代）+ CMS（老年代）
+4.Serial（新生代）+ CMS（老年代）
+5.Parallel Scavenge（新生代）+ Parallel Old（老年代）
+6.Parallel Scavenge（新生代）+ Serial Old（老年代）
+7.G1（整个堆）
+
+七、如何选择GC
+吞吐量优先：ParallelGC
+低延迟优先：CMS GC
+系统堆内存较大，平均GC时间可控：G1GC (4G以上堆内存，推荐用G1GC)
+
+八、GC参数
+GC的参数非常多，各个参数之间有时会有冲突，有时还会有意想不到的问题出现。比如在指定使用CMS GC时，-XX:NewSize和-XX:MaxNewSize的默认值和ParallelGC时不一样。若使用的是ParallelGC，默认新生代内存是整个堆内存的1/3，但CMS GC却不是这样。在-XX:+UseConcMarkSweepGC的情况下，即使分配了4G的堆内存，JVM分配的初始新生代和最大新生代都只有300多M。因此可能会出现明明堆内存足够大，在查看GC日志时却发现新生代内存使用较小时就出现了GC的情况。
+当然，并不是说新生代的内存越大就越好。这个例子带来的警示是同一个GC参数的默认值在不同GC下是不一样的。为了避免出现想当然的情况，最好在启动时显式指定比较重要的GC参数，如新生代内存、老年代内存、GC线程数等。在GC调优的时候，也要重点关注这些参数值。针对不同的应用，选用何种GC、GC的常用参数如何设置，都会影响到GC的最终效果。
