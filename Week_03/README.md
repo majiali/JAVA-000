@@ -1,1 +1,7 @@
-学习笔记
+用最简单的方式将request的filter和response的filter集成了进去
+在request中加了一个header
+对response的内容添加了一个小尾巴by my-netty-gateway
+尝试实现NettyClient版的HttpOutboundHandler
+完成了大部分的工作，已经可以通过Netty Client拿到endpoint server的返回值了
+但是应该是ctx的层级问题，无法将获取到的response传给上一层的ctx，导致浏览器拿不到这个数据无法显示。
+这块确实不知道怎么办，麻烦老师指教一下，谢谢啦！
